@@ -1,0 +1,24 @@
+{
+  "name": "@garrepa/adapter-claude-code",
+  "version": "0.0.1",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "garrepa-hook": "bin/pre-tool-use-hook.js",
+    "garrepa-summarize": "bin/garrepa-summarize.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@garrepa/core": "workspace:*",
+    "@garrepa/provider-anthropic": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "*",
+    "typescript": "*",
+    "vitest": "*"
+  }
+}

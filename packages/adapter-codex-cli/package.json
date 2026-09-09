@@ -1,0 +1,22 @@
+{
+  "name": "@garrepa/adapter-codex-cli",
+  "version": "0.0.1",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "garrepa-codex-hook": "bin/pre-tool-use-hook.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@garrepa/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "*",
+    "typescript": "*",
+    "vitest": "*"
+  }
+}

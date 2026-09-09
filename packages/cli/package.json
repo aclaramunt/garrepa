@@ -1,0 +1,29 @@
+{
+  "name": "@garrepa/cli",
+  "version": "0.0.1",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "garrepa": "./bin/garrepa.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.9.0",
+    "dotenv": "^17.4.2",
+    "@garrepa/adapter-claude-code": "workspace:*",
+    "@garrepa/adapter-codex-cli": "workspace:*",
+    "@garrepa/core": "workspace:*",
+    "@garrepa/provider-anthropic": "workspace:*",
+    "@garrepa/provider-openai-compatible": "workspace:*",
+    "commander": "^12.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "*",
+    "typescript": "*",
+    "vitest": "*"
+  }
+}
