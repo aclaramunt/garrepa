@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { config as dotenvConfig } from 'dotenv';
 // Load .env from monorepo root regardless of cwd
-dotenvConfig({ path: resolve(__dirname, '..', '.env') });
+dotenvConfig({ path: resolve(__dirname, '..', '.env'), quiet: true });
 
 import { readFileSync } from 'node:fs';
 import { route, DEFAULT_THRESHOLD } from '../packages/core/src/index.js';

@@ -1,4 +1,5 @@
 export { installHook } from './install';
+export { installSkill, WRITE_SKILL_NAME } from './skill';
 export { loadCodexCliConfig, DEFAULT_CODEX_CLI_CONFIG, DEFAULT_READ_COMMANDS } from './config';
 export type { CodexCliConfig } from './config';
 export type { PreToolUsePayload, HookDecisionResponse } from './types';

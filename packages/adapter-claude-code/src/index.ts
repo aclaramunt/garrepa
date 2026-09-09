@@ -1,4 +1,5 @@
 export { installHook } from './install';
+export { installSkill, WRITE_SKILL_NAME } from './skill';
 export { loadConfig, DEFAULT_GARREPA_CONFIG } from './config';
 export type {
   GarrepaConfig,

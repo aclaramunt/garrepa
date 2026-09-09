@@ -22,7 +22,7 @@ export interface InitOptions {
 export interface InitDeps {
   cwd: string;
   writeConfig(cwd: string, config: GarrepaConfig): void;
-  /** Called after config is written to register the hook for the chosen harness. */
+  /** Called after config is written to register the hook and skill for the chosen harness. */
   installHook(projectRoot: string, harness: SupportedHarness): void;
   log(msg: string): void;
   exit(code: number): never;
@@ -220,6 +220,11 @@ async function runInteractiveWizard(options: InitOptions, deps: InitDeps): Promi
       ? '.codex/hooks.json (PreToolUse → exec_command)'
       : '.claude/settings.json (PreToolUse → Read)';
 
+  const skillLocation =
+    harness === 'codex-cli'
+      ? '.agents/skills/garrepa-write/SKILL.md'
+      : '.claude/skills/garrepa-write/SKILL.md';
+
   const envWarning =
     config.provider.apiKeyEnvVar && !process.env[config.provider.apiKeyEnvVar]
       ? `\nRemember to set ${config.provider.apiKeyEnvVar} in your shell or .env file.`
@@ -233,7 +238,8 @@ async function runInteractiveWizard(options: InitOptions, deps: InitDeps): Promi
   clack.outro(
     `garrepa configured!\n` +
       `  Config  → garrepa.config.json\n` +
-      `  Hook    → ${hookLocation}` +
+      `  Hook    → ${hookLocation}\n` +
+      `  Skill   → ${skillLocation}` +
       envWarning +
       codexNote,
   );

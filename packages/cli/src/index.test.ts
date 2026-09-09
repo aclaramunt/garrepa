@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { VERSION, readConfig, writeConfig, createProvider } from './index';
+import { VERSION, readConfig, writeConfig, createProvider, runWrite, getPresetInstruction } from './index';
 
 describe('@garrepa/cli — public API', () => {
   it('exports VERSION', () => {
@@ -16,5 +16,13 @@ describe('@garrepa/cli — public API', () => {
 
   it('exports createProvider', () => {
     expect(typeof createProvider).toBe('function');
+  });
+
+  it('exports runWrite', () => {
+    expect(typeof runWrite).toBe('function');
+  });
+
+  it('exports getPresetInstruction', () => {
+    expect(typeof getPresetInstruction).toBe('function');
   });
 });

@@ -3,11 +3,12 @@ import { config as loadDotenv } from 'dotenv';
 import * as fs from 'fs';
 import { Command } from 'commander';
 
-loadDotenv({ path: path.resolve(process.cwd(), '.env') });
+loadDotenv({ path: path.resolve(process.cwd(), '.env'), quiet: true });
 import { installHook as installClaudeCodeHook } from '@garrepa/adapter-claude-code';
 import { installHook as installCodexCliHook } from '@garrepa/adapter-codex-cli';
 import { runInit } from './commands/init';
 import { runSummarize } from './commands/summarize';
+import { runWrite, readStdinFromProcess } from './commands/write';
 import { readConfig, writeConfig } from './config';
 import { createProvider } from './provider-factory';
 import { route } from '@garrepa/core';
@@ -65,6 +66,21 @@ program
       readConfig,
       createProvider,
       route,
+      writeOutput: (t) => process.stdout.write(t),
+      writeError: (t) => process.stderr.write(t),
+      exit: (c) => process.exit(c),
+    });
+  });
+
+program
+  .command('write <preset>')
+  .description('Generate content from stdin using the configured cheap model (e.g. commit-message)')
+  .action(async (preset: string) => {
+    const cwd = process.cwd();
+    await runWrite(preset, cwd, {
+      readStdin: readStdinFromProcess,
+      readConfig,
+      createProvider,
       writeOutput: (t) => process.stdout.write(t),
       writeError: (t) => process.stderr.write(t),
       exit: (c) => process.exit(c),

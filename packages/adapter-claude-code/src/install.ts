@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { DEFAULT_GARREPA_CONFIG } from './config';
+import { installSkill } from './skill';
 
 /** Absolute path to the hook bin script in this package. */
 const HOOK_BIN = path.resolve(__dirname, '..', 'bin', 'pre-tool-use-hook.js');
@@ -25,8 +26,9 @@ interface ClaudeSettings {
 }
 
 /**
- * Registers the garrepa PreToolUse hook in `<projectRoot>/.claude/settings.json`
- * and creates a default `garrepa.config.json` if one does not exist.
+ * Registers the garrepa PreToolUse hook in `<projectRoot>/.claude/settings.json`,
+ * installs the `garrepa-write` project skill under `.claude/skills/`, and
+ * creates a default `garrepa.config.json` if one does not exist.
  *
  * Safe to call multiple times — will not add a duplicate hook entry.
  */
@@ -67,6 +69,8 @@ export function installHook(projectRoot: string): void {
   }
 
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
+
+  installSkill(projectRoot);
 
   if (!fs.existsSync(configPath)) {
     fs.writeFileSync(
