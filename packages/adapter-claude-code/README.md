@@ -87,9 +87,11 @@ must never leave their original trust boundary.
 
 ## Hook registration
 
-`garrepa init` (default harness `claude-code`) merges `PreToolUse` (`Read`) and
-`PostToolUse` (`mcp__.*` and `Bash` git dumps) entries into `.claude/settings.json`, writes a stable
-launcher at `.claude/hooks/garrepa-hook.js`, and installs the `garrepa-write`
-skill under `.claude/skills/`. Install is additive: no duplicate hooks, no
-wiping unrelated settings. Invalid `.claude/settings.json` aborts without
-overwrite.
+`garrepa init` (default harness `claude-code`) writes or updates four files:
+
+- `garrepa.config.json` — created with defaults if it does not exist; never overwritten if it does.
+- `.claude/settings.json` — `PreToolUse` (`Read`) and `PostToolUse` (`mcp__.*` and `Bash` with `if: "Bash(git *)"`) entries merged in.
+- `.claude/hooks/garrepa-hook.js` — stable launcher the hook entries point at.
+- `.claude/skills/garrepa-write/SKILL.md` — opt-in commit-message drafting skill.
+
+Install is additive: no duplicate hooks, no wiping unrelated settings. Invalid `.claude/settings.json` aborts without overwrite.

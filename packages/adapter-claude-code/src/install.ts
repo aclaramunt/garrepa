@@ -58,9 +58,13 @@ function stripGarrepaHooks(groups: HookGroup[], matcher: string): HookGroup[] {
 function writeLauncher(projectRoot: string): void {
   const dest = path.join(projectRoot, LAUNCHER_RELATIVE_PATH);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  const source = fs.existsSync(LAUNCHER_TEMPLATE_PATH)
-    ? fs.readFileSync(LAUNCHER_TEMPLATE_PATH, 'utf8')
-    : `#!/usr/bin/env node
+
+  // Embed the install-time absolute path so the hook works even when the
+  // adapter is installed globally or via npx (not in the project's node_modules).
+  // __dirname is adapter-claude-code/dist/ at runtime.
+  const installTimeEntry = path.resolve(__dirname, 'hook-entry.js');
+
+  const source = `#!/usr/bin/env node
 'use strict';
 const path = require('path');
 const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
@@ -68,9 +72,17 @@ function failOpen(err) {
   try { process.stderr.write(String(err) + '\\n'); } catch { /* ignore */ }
   process.exit(0);
 }
+function resolveEntry() {
+  try {
+    const pkgJson = require.resolve('@garrepa/adapter-claude-code/package.json', { paths: [root] });
+    return path.join(path.dirname(pkgJson), 'dist', 'hook-entry.js');
+  } catch {
+    // Fall back to install-time location (global or npx install).
+    return ${JSON.stringify(installTimeEntry)};
+  }
+}
 try {
-  const pkgJson = require.resolve('@garrepa/adapter-claude-code/package.json', { paths: [root] });
-  require(path.join(path.dirname(pkgJson), 'dist', 'hook-entry.js')).main().catch(failOpen);
+  require(resolveEntry()).main().catch(failOpen);
 } catch (err) {
   failOpen(err);
 }

@@ -16,33 +16,66 @@ The cheap model only receives plain text and returns plain text. It never decide
 |---|---|
 | `Read` on a large documentation file (`.md`, `.rst`, `.txt`, …) | PreToolUse hook injects a section map instead of the raw file. Source code, config, and lockfiles are never touched. |
 | MCP tool result above threshold | PostToolUse hook compresses text and `structuredContent`. Mixed image+text results (e.g. Figma) keep screenshots intact — rasters are never sent to the cheap model. |
-| `git diff` / `git log` / `git show` above threshold | PostToolUse hook on `Bash` replaces the dump with a structured briefing. The hook never drafts a commit message and never runs git. |
+| `git diff` / `git log` / `git show` above threshold | PostToolUse hook on `Bash` (git commands only) replaces the dump with a structured briefing. The hook never drafts a commit message and never runs git. |
 | `garrepa write commit-message` | Opt-in CLI command: pipe a diff on stdin, get a conventional-commits message on stdout. |
 | `garrepa write pr-title` | Opt-in CLI command: pipe a diff on stdin, get a pull request title on stdout. |
 
 ## Quick start
 
 ```bash
-# 1. Install the CLI
-npm install -g garrepa
-# or run without installing:
-npx garrepa init
-
-# 2. Run the setup wizard in your project root
+# Run the setup wizard in your project root (no global install needed)
 cd your-project
-garrepa init
+npx garrepa init
 ```
 
-The wizard asks for your provider (Anthropic, OpenAI-compatible endpoint, or manual) and writes two files:
+The wizard asks four questions:
 
-- `garrepa.config.json` — provider and threshold settings
-- `.claude/settings.json` — hook entries merged into your existing Claude Code config (never overwritten)
+1. **Harness** — `Claude Code` (default) or `Codex CLI` (community scaffold)
+2. **Provider** — Anthropic Haiku (recommended), OpenAI-compatible endpoint, or manual
+3. **API key env var** — the name of the env var that holds your key (the value is never written to disk)
+4. **Delegation threshold** — content shorter than this (default 32 000 chars) passes through untouched
+
+After the wizard, four files are written or updated:
+
+| File | Purpose |
+|---|---|
+| `garrepa.config.json` | Provider and threshold settings |
+| `.claude/settings.json` | Three hook entries merged into your existing Claude Code config |
+| `.claude/hooks/garrepa-hook.js` | Stable launcher the hooks point at |
+| `.claude/skills/garrepa-write/SKILL.md` | `garrepa write` skill for commit-message drafting |
 
 Re-running `garrepa init` is safe: it never duplicates hooks and never wipes unrelated settings.
 
+### Non-interactive setup
+
+Pass flags to skip the wizard entirely:
+
+```bash
+# Anthropic (default)
+npx garrepa init --provider anthropic --api-key-env ANTHROPIC_API_KEY
+
+# OpenAI-compatible endpoint
+npx garrepa init --provider openai-compatible --base-url https://api.groq.com/openai/v1 \
+  --model llama-3.1-8b-instant --api-key-env GROQ_API_KEY
+
+# Custom threshold
+npx garrepa init --provider anthropic --threshold 50000
+```
+
+All flags:
+
+| Flag | Description |
+|---|---|
+| `--harness <name>` | `claude-code` (default) or `codex-cli` |
+| `--provider <type>` | `anthropic`, `openai-compatible`, or `manual` |
+| `--base-url <url>` | Base URL for `openai-compatible` |
+| `--model <model>` | Model identifier for `openai-compatible` |
+| `--api-key-env <varname>` | Env var name for the API key |
+| `--threshold <number>` | Delegation threshold in characters |
+
 ## Configuration
 
-`garrepa.config.json` lives at your project root:
+`garrepa.config.json` lives at your project root. The Anthropic provider defaults to `claude-haiku-4-5`; the `model` field is optional.
 
 ```json
 {
@@ -51,7 +84,6 @@ Re-running `garrepa init` is safe: it never duplicates hooks and never wipes unr
   },
   "provider": {
     "type": "anthropic",
-    "model": "claude-haiku-4-5-20251001",
     "apiKeyEnvVar": "ANTHROPIC_API_KEY"
   }
 }
@@ -65,7 +97,18 @@ Re-running `garrepa init` is safe: it never duplicates hooks and never wipes unr
 {
   "provider": {
     "type": "anthropic",
-    "model": "claude-haiku-4-5-20251001",
+    "apiKeyEnvVar": "ANTHROPIC_API_KEY"
+  }
+}
+```
+
+Override the model if needed:
+
+```json
+{
+  "provider": {
+    "type": "anthropic",
+    "model": "claude-haiku-4-5",
     "apiKeyEnvVar": "ANTHROPIC_API_KEY"
   }
 }
@@ -120,11 +163,11 @@ The tool name matches the name Claude Code uses for that MCP server tool — it 
 ## CLI reference
 
 ```
-garrepa init                        Interactive setup wizard
-garrepa init --provider anthropic   Non-interactive setup (accepts flags)
-garrepa summarize <file>            Compress a file to stdout
-garrepa write commit-message        Read a diff from stdin, write a commit message
-garrepa write pr-title              Read a diff from stdin, write a pull request title
+garrepa init                                     Interactive setup wizard
+garrepa init --provider anthropic                Non-interactive setup (accepts flags, see above)
+garrepa summarize <file>                         Compress a file to stdout
+garrepa write commit-message                     Read a diff from stdin, write a commit message
+garrepa write pr-title                           Read a diff from stdin, write a pull request title
 ```
 
 ### garrepa write
@@ -146,10 +189,22 @@ git diff main...HEAD | garrepa write pr-title
 After `garrepa init`, confirm the hooks are registered:
 
 ```bash
-cat .claude/settings.json | grep -A3 garrepa
+cat .claude/settings.json | grep -A5 garrepa
 ```
 
-You should see `PreToolUse` (matcher `Read`) and `PostToolUse` (matchers `mcp__.*` and `Bash`) entries pointing at `.claude/hooks/garrepa-hook.js`.
+You should see three hook entries:
+
+- `PreToolUse` with matcher `Read` — intercepts large documentation reads
+- `PostToolUse` with matcher `mcp__.*` — compresses large MCP responses
+- `PostToolUse` with matcher `Bash` and `if: "Bash(git *)"` — compresses large git dumps
+
+All three point at `.claude/hooks/garrepa-hook.js`.
+
+Also confirm the skill is installed:
+
+```bash
+ls .claude/skills/garrepa-write/SKILL.md
+```
 
 ## Troubleshooting
 
@@ -180,7 +235,7 @@ You should see `PreToolUse` (matcher `Read`) and `PostToolUse` (matchers `mcp__.
 | `@garrepa/core` | Decision engine — harness-agnostic routing and provider interface |
 | `@garrepa/adapter-claude-code` | **First-party** Claude Code adapter |
 | `@garrepa/adapter-codex-cli` | **Community scaffold** — see below |
-| `@garrepa/provider-anthropic` | Anthropic cheap-model provider |
+| `@garrepa/provider-anthropic` | Anthropic cheap-model provider (default model: `claude-haiku-4-5`) |
 | `@garrepa/provider-openai-compatible` | OpenAI-compatible endpoints (Groq, Together, OpenRouter, Ollama, …) |
 | `@garrepa/cli` | `npx garrepa` binary |
 

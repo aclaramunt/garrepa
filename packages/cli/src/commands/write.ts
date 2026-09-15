@@ -47,7 +47,7 @@ export async function runWrite(preset: string, cwd: string, deps: WriteDeps): Pr
   const provider = deps.createProvider(config);
   try {
     const output = await provider.summarize(content, instruction);
-    deps.writeOutput(output);
+    deps.writeOutput(output.text);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     deps.writeError(`garrepa write: generation failed: ${msg}\n`);
