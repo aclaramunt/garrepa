@@ -1,6 +1,6 @@
 {
   "name": "garrepa",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "private": false,
   "description": "Context compression router for Claude Code — delegates large tool results to a cheap model.",
   "bin": {
