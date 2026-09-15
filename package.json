@@ -1,6 +1,6 @@
 {
   "name": "garrepa",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "private": false,
   "description": "Context compression router for Claude Code — delegates large tool results to a cheap model.",
   "bin": {
@@ -10,7 +10,7 @@
     "bin"
   ],
   "dependencies": {
-    "@garrepa/cli": "0.0.1-beta.0"
+    "@garrepa/cli": "^0.0.3"
   },
   "scripts": {
     "build": "pnpm -r run build",
