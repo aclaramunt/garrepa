@@ -5,6 +5,6 @@ export default tseslint.config(
   tseslint.configs.recommended,
   prettierConfig,
   {
-    ignores: ['**/dist/**', '**/node_modules/**'],
+    ignores: ['**/dist/**', '**/node_modules/**', '**/bin/**', '**/hooks/**', 'scripts/**'],
   },
 );

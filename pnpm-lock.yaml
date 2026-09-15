@@ -38,6 +38,9 @@ importers:
       '@garrepa/provider-anthropic':
         specifier: workspace:*
         version: link:../provider-anthropic
+      '@garrepa/provider-openai-compatible':
+        specifier: workspace:*
+        version: link:../provider-openai-compatible
     devDependencies:
       '@types/node':
         specifier: '*'

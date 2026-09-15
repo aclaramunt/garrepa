@@ -1,11 +1,17 @@
 {
   "name": "@garrepa/adapter-codex-cli",
-  "version": "0.0.1",
-  "private": true,
+  "version": "0.0.1-beta.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
     "garrepa-codex-hook": "bin/pre-tool-use-hook.js"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc",

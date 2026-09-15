@@ -30,3 +30,6 @@ Thumbs.db
 garrepa.config.json
 .claude/
 .codex/
+
+# CI workflows (managed separately)
+.github/workflows/

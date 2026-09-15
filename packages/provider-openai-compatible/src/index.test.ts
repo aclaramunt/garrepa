@@ -10,12 +10,13 @@ const BASE_URL = 'https://api.openai.com/v1';
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
 const MODEL = 'gpt-4o-mini';
 
-function okResponse(content: string): Response {
+function okResponse(content: string, usage?: { prompt_tokens: number; completion_tokens: number }): Response {
   return {
     ok: true,
     status: 200,
     json: async () => ({
       choices: [{ message: { content } }],
+      ...(usage ? { usage } : {}),
     }),
   } as unknown as Response;
 }
@@ -241,7 +242,29 @@ describe('OpenAICompatibleProvider', () => {
         apiKey: DUMMY_KEY,
       });
       const result = await provider.summarize('content', 'instruction');
-      expect(result).toBe('here is the summary');
+      expect(result.text).toBe('here is the summary');
+    });
+
+    it('returns usage when the API response includes it', async () => {
+      fetchMock.mockResolvedValue(okResponse('summary', { prompt_tokens: 200, completion_tokens: 80 }));
+      const provider = new OpenAICompatibleProvider({
+        baseUrl: BASE_URL,
+        model: MODEL,
+        apiKey: DUMMY_KEY,
+      });
+      const result = await provider.summarize('content', 'instruction');
+      expect(result.usage).toEqual({ inputTokens: 200, outputTokens: 80 });
+    });
+
+    it('returns undefined usage when the API response omits it', async () => {
+      fetchMock.mockResolvedValue(okResponse('summary'));
+      const provider = new OpenAICompatibleProvider({
+        baseUrl: BASE_URL,
+        model: MODEL,
+        apiKey: DUMMY_KEY,
+      });
+      const result = await provider.summarize('content', 'instruction');
+      expect(result.usage).toBeUndefined();
     });
   });
 
@@ -351,8 +374,8 @@ describe('OpenAICompatibleProvider (integration)', () => {
           'This sentence is commonly used to test typefaces because it contains every letter of the alphabet.',
         'Summarize in five words or fewer.',
       );
-      expect(typeof result).toBe('string');
-      expect(result.trim().length).toBeGreaterThan(0);
+      expect(typeof result.text).toBe('string');
+      expect(result.text.trim().length).toBeGreaterThan(0);
     },
     30_000,
   );

@@ -9,12 +9,13 @@ import {
 const DUMMY_KEY = 'sk-ant-test-key';
 const MESSAGES_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 
-function okResponse(text: string): Response {
+function okResponse(text: string, usage?: { input_tokens: number; output_tokens: number }): Response {
   return {
     ok: true,
     status: 200,
     json: async () => ({
       content: [{ type: 'text', text }],
+      ...(usage ? { usage } : {}),
     }),
   } as unknown as Response;
 }
@@ -178,7 +179,21 @@ describe('AnthropicProvider', () => {
       fetchMock.mockResolvedValue(okResponse('here is the summary'));
       const provider = new AnthropicProvider({ apiKey: DUMMY_KEY });
       const result = await provider.summarize('content', 'instruction');
-      expect(result).toBe('here is the summary');
+      expect(result.text).toBe('here is the summary');
+    });
+
+    it('returns usage when the API response includes it', async () => {
+      fetchMock.mockResolvedValue(okResponse('summary', { input_tokens: 100, output_tokens: 50 }));
+      const provider = new AnthropicProvider({ apiKey: DUMMY_KEY });
+      const result = await provider.summarize('content', 'instruction');
+      expect(result.usage).toEqual({ inputTokens: 100, outputTokens: 50 });
+    });
+
+    it('returns undefined usage when the API response omits it', async () => {
+      fetchMock.mockResolvedValue(okResponse('summary'));
+      const provider = new AnthropicProvider({ apiKey: DUMMY_KEY });
+      const result = await provider.summarize('content', 'instruction');
+      expect(result.usage).toBeUndefined();
     });
   });
 
@@ -257,8 +272,8 @@ describe('AnthropicProvider (integration)', () => {
           'This sentence is commonly used to test typefaces because it contains every letter of the alphabet.',
         'Summarize in five words or fewer.',
       );
-      expect(typeof result).toBe('string');
-      expect(result.trim().length).toBeGreaterThan(0);
+      expect(typeof result.text).toBe('string');
+      expect(result.text.trim().length).toBeGreaterThan(0);
     },
     30_000, // 30-second timeout for a real API call
   );

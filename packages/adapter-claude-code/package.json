@@ -1,12 +1,19 @@
 {
   "name": "@garrepa/adapter-claude-code",
-  "version": "0.0.1",
-  "private": true,
+  "version": "0.0.1-beta.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
     "garrepa-hook": "bin/pre-tool-use-hook.js",
     "garrepa-summarize": "bin/garrepa-summarize.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "hooks"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc",
@@ -14,7 +21,8 @@
   },
   "dependencies": {
     "@garrepa/core": "workspace:*",
-    "@garrepa/provider-anthropic": "workspace:*"
+    "@garrepa/provider-anthropic": "workspace:*",
+    "@garrepa/provider-openai-compatible": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "*",

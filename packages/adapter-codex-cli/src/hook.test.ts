@@ -4,15 +4,15 @@ import type { PreToolUsePayload } from './types';
 import { DEFAULT_THRESHOLD } from '@garrepa/core';
 import type { CodexCliConfig } from './config';
 
-// Source: openai/codex codex-rs/hooks/src/schema.rs — PreToolUseCommandInput
-// tool_name: "exec_command", tool_input: { cmd: "..." }
+// Current protocol: https://developers.openai.com/codex/hooks
+// tool_name: "Bash", tool_input: { command: "..." }
 
 const DEFAULT_CONFIG: CodexCliConfig = {
   threshold: DEFAULT_THRESHOLD,
   provider: { type: 'anthropic' },
 };
 
-const EXEC_PAYLOAD: PreToolUsePayload = {
+const BASH_PAYLOAD: PreToolUsePayload = {
   session_id: 'sess_test',
   turn_id: 'turn_001',
   transcript_path: null,
@@ -20,35 +20,62 @@ const EXEC_PAYLOAD: PreToolUsePayload = {
   hook_event_name: 'PreToolUse',
   model: 'gpt-test',
   permission_mode: 'default',
-  tool_name: 'exec_command',
-  tool_input: { cmd: 'cat /project/src/large-file.ts' },
+  tool_name: 'Bash',
+  tool_input: { command: 'cat /project/src/large-file.ts' },
   tool_use_id: 'tu_001',
 };
 
+const LEGACY_EXEC_PAYLOAD: PreToolUsePayload = {
+  ...BASH_PAYLOAD,
+  tool_name: 'exec_command',
+  tool_input: { cmd: 'cat /project/src/large-file.ts' },
+};
+
 const SMALL_CONTENT = 'const x = 1;'; // well below 2000 chars
-const LARGE_CONTENT = 'x'.repeat(3000); // above 2000-char default threshold
+const LARGE_CONTENT = 'x'.repeat(33_000); // above 32k-char default threshold
 
 describe('handleHook — payload parsing', () => {
-  it('extracts file path from a cat exec_command payload', () => {
+  it('extracts file path from a cat Bash payload (tool_input.command)', () => {
     const readFile = vi.fn(() => SMALL_CONTENT);
-    handleHook(EXEC_PAYLOAD, { readFile, loadConfig: () => DEFAULT_CONFIG });
+    handleHook(BASH_PAYLOAD, { readFile, loadConfig: () => DEFAULT_CONFIG });
     expect(readFile).toHaveBeenCalledWith('/project/src/large-file.ts');
   });
 
-  it('does not touch the filesystem for non-exec_command tools', () => {
+  it('extracts file path from a legacy exec_command payload (tool_input.cmd)', () => {
+    const readFile = vi.fn(() => SMALL_CONTENT);
+    handleHook(LEGACY_EXEC_PAYLOAD, { readFile, loadConfig: () => DEFAULT_CONFIG });
+    expect(readFile).toHaveBeenCalledWith('/project/src/large-file.ts');
+  });
+
+  it('prefers tool_input.command when both command and cmd are present', () => {
+    const readFile = vi.fn(() => SMALL_CONTENT);
+    handleHook(
+      {
+        ...BASH_PAYLOAD,
+        tool_input: {
+          command: 'cat /project/src/from-command.ts',
+          cmd: 'cat /project/src/from-cmd.ts',
+        },
+      },
+      { readFile, loadConfig: () => DEFAULT_CONFIG },
+    );
+    expect(readFile).toHaveBeenCalledWith('/project/src/from-command.ts');
+  });
+
+  it('does not touch the filesystem for non-shell tools', () => {
     const readFile = vi.fn(() => '');
     const output = handleHook(
-      { ...EXEC_PAYLOAD, tool_name: 'apply_patch', tool_input: { patch: '...' } },
+      { ...BASH_PAYLOAD, tool_name: 'apply_patch', tool_input: { patch: '...' } },
       { readFile, loadConfig: () => DEFAULT_CONFIG },
     );
     expect(output.type).toBe('allow');
     expect(readFile).not.toHaveBeenCalled();
   });
 
-  it('does not touch the filesystem when cmd field is absent', () => {
+  it('does not touch the filesystem when command and cmd fields are absent', () => {
     const readFile = vi.fn(() => '');
     const output = handleHook(
-      { ...EXEC_PAYLOAD, tool_input: {} },
+      { ...BASH_PAYLOAD, tool_input: {} },
       { readFile, loadConfig: () => DEFAULT_CONFIG },
     );
     expect(output.type).toBe('allow');
@@ -58,7 +85,7 @@ describe('handleHook — payload parsing', () => {
 
 describe('handleHook — allow decisions', () => {
   it('allows when file content is below threshold', () => {
-    const output = handleHook(EXEC_PAYLOAD, {
+    const output = handleHook(BASH_PAYLOAD, {
       readFile: () => SMALL_CONTENT,
       loadConfig: () => DEFAULT_CONFIG,
     });
@@ -66,18 +93,18 @@ describe('handleHook — allow decisions', () => {
   });
 
   it('allows when the file cannot be read', () => {
-    const output = handleHook(EXEC_PAYLOAD, {
+    const output = handleHook(BASH_PAYLOAD, {
       readFile: () => { throw new Error('ENOENT: no such file'); },
       loadConfig: () => DEFAULT_CONFIG,
     });
     expect(output.type).toBe('allow');
   });
 
-  it('allows all non-exec_command tool names', () => {
+  it('allows all non-shell tool names', () => {
     for (const toolName of ['apply_patch', 'write_stdin', 'mcp_tool', 'request_permissions']) {
       const readFile = vi.fn(() => LARGE_CONTENT);
       const output = handleHook(
-        { ...EXEC_PAYLOAD, tool_name: toolName },
+        { ...BASH_PAYLOAD, tool_name: toolName },
         { readFile, loadConfig: () => DEFAULT_CONFIG },
       );
       expect(output.type).toBe('allow');
@@ -94,7 +121,7 @@ describe('handleHook — allow decisions', () => {
       'cat file.txt && echo done',
     ]) {
       const output = handleHook(
-        { ...EXEC_PAYLOAD, tool_input: { cmd } },
+        { ...BASH_PAYLOAD, tool_input: { command: cmd } },
         { readFile, loadConfig: () => DEFAULT_CONFIG },
       );
       expect(output.type, `expected allow for: ${cmd}`).toBe('allow');
@@ -105,7 +132,7 @@ describe('handleHook — allow decisions', () => {
   it('allows when cmd targets a command not in the read allowlist', () => {
     const readFile = vi.fn(() => LARGE_CONTENT);
     const output = handleHook(
-      { ...EXEC_PAYLOAD, tool_input: { cmd: 'ls /project' } },
+      { ...BASH_PAYLOAD, tool_input: { command: 'ls /project' } },
       { readFile, loadConfig: () => DEFAULT_CONFIG },
     );
     expect(output.type).toBe('allow');
@@ -115,7 +142,7 @@ describe('handleHook — allow decisions', () => {
   it('allows when cmd has multiple file arguments (ambiguous)', () => {
     const readFile = vi.fn(() => LARGE_CONTENT);
     const output = handleHook(
-      { ...EXEC_PAYLOAD, tool_input: { cmd: 'cat file1.txt file2.txt' } },
+      { ...BASH_PAYLOAD, tool_input: { command: 'cat file1.txt file2.txt' } },
       { readFile, loadConfig: () => DEFAULT_CONFIG },
     );
     expect(output.type).toBe('allow');
@@ -125,15 +152,34 @@ describe('handleHook — allow decisions', () => {
 
 describe('handleHook — deny decisions', () => {
   it('denies when file is above threshold', () => {
-    const output = handleHook(EXEC_PAYLOAD, {
+    const output = handleHook(BASH_PAYLOAD, {
       readFile: () => LARGE_CONTENT,
       loadConfig: () => DEFAULT_CONFIG,
     });
     expect(output.type).toBe('deny');
   });
 
+  it('denies a legacy exec_command + cmd payload when the file is above threshold', () => {
+    const output = handleHook(LEGACY_EXEC_PAYLOAD, {
+      readFile: () => LARGE_CONTENT,
+      loadConfig: () => DEFAULT_CONFIG,
+    });
+    expect(output.type).toBe('deny');
+  });
+
+  it('denies a Bash payload that only has legacy tool_input.cmd', () => {
+    const output = handleHook(
+      { ...BASH_PAYLOAD, tool_input: { cmd: 'cat /project/src/large-file.ts' } },
+      {
+        readFile: () => LARGE_CONTENT,
+        loadConfig: () => DEFAULT_CONFIG,
+      },
+    );
+    expect(output.type).toBe('deny');
+  });
+
   it('deny response has hookEventName: "PreToolUse"', () => {
-    const output = handleHook(EXEC_PAYLOAD, {
+    const output = handleHook(BASH_PAYLOAD, {
       readFile: () => LARGE_CONTENT,
       loadConfig: () => DEFAULT_CONFIG,
     });
@@ -142,7 +188,7 @@ describe('handleHook — deny decisions', () => {
   });
 
   it('deny response has permissionDecision: "deny"', () => {
-    const output = handleHook(EXEC_PAYLOAD, {
+    const output = handleHook(BASH_PAYLOAD, {
       readFile: () => LARGE_CONTENT,
       loadConfig: () => DEFAULT_CONFIG,
     });
@@ -151,7 +197,7 @@ describe('handleHook — deny decisions', () => {
   });
 
   it('deny reason mentions garrepa summarize', () => {
-    const output = handleHook(EXEC_PAYLOAD, {
+    const output = handleHook(BASH_PAYLOAD, {
       readFile: () => LARGE_CONTENT,
       loadConfig: () => DEFAULT_CONFIG,
     });
@@ -162,7 +208,7 @@ describe('handleHook — deny decisions', () => {
   });
 
   it('deny additionalContext references the original file path', () => {
-    const output = handleHook(EXEC_PAYLOAD, {
+    const output = handleHook(BASH_PAYLOAD, {
       readFile: () => LARGE_CONTENT,
       loadConfig: () => DEFAULT_CONFIG,
     });
@@ -178,7 +224,7 @@ describe('handleHook — deny decisions', () => {
       provider: { type: 'anthropic' },
     };
     const content = 'y'.repeat(800);
-    const output = handleHook(EXEC_PAYLOAD, {
+    const output = handleHook(BASH_PAYLOAD, {
       readFile: () => content,
       loadConfig: () => customConfig,
     });
@@ -197,7 +243,7 @@ describe('handleHook — deny decisions', () => {
     const readFile = vi.fn(() => 'x'.repeat(10));
 
     // 'cat' is not in custom allowlist — should allow
-    const catOutput = handleHook(EXEC_PAYLOAD, {
+    const catOutput = handleHook(BASH_PAYLOAD, {
       readFile,
       loadConfig: () => customConfig,
     });
@@ -206,7 +252,7 @@ describe('handleHook — deny decisions', () => {
 
     // 'view' IS in custom allowlist — should deny (above threshold of 1 char)
     const viewOutput = handleHook(
-      { ...EXEC_PAYLOAD, tool_input: { cmd: 'view /project/src/large-file.ts' } },
+      { ...BASH_PAYLOAD, tool_input: { command: 'view /project/src/large-file.ts' } },
       { readFile, loadConfig: () => customConfig },
     );
     expect(viewOutput.type).toBe('deny');
@@ -215,7 +261,7 @@ describe('handleHook — deny decisions', () => {
 
 describe('handleHook — config loading fallback', () => {
   it('uses DEFAULT_THRESHOLD when config cannot be loaded', () => {
-    const output = handleHook(EXEC_PAYLOAD, {
+    const output = handleHook(BASH_PAYLOAD, {
       readFile: () => SMALL_CONTENT,
       loadConfig: () => DEFAULT_CONFIG,
     });

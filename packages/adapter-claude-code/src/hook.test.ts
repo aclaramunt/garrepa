@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { handleHook } from './hook';
+import type { HookDeps } from './hook';
 import type { PreToolUsePayload } from './types';
 import { DEFAULT_THRESHOLD } from '@garrepa/core';
 import type { GarrepaConfig } from './config';
@@ -9,139 +10,122 @@ const DEFAULT_CONFIG: GarrepaConfig = {
   provider: { type: 'anthropic' },
 };
 
-const READ_PAYLOAD: PreToolUsePayload = {
-  session_id: 'sess_test',
-  prompt_id: 'prompt_test',
-  transcript_path: '/tmp/transcript.json',
-  cwd: '/project',
-  permission_mode: 'default',
-  hook_event_name: 'PreToolUse',
-  tool_name: 'Read',
-  tool_input: { file_path: '/project/src/large-file.ts' },
-  tool_use_id: 'tu_001',
-};
+function readPayload(filePath: string, extra: Record<string, unknown> = {}): PreToolUsePayload {
+  return {
+    session_id: 'sess_test',
+    prompt_id: 'prompt_test',
+    transcript_path: '/tmp/transcript.json',
+    cwd: '/project',
+    permission_mode: 'default',
+    hook_event_name: 'PreToolUse',
+    tool_name: 'Read',
+    tool_input: { file_path: filePath, ...extra },
+    tool_use_id: 'tu_001',
+  };
+}
 
-const SMALL_CONTENT = 'const x = 1;'; // well below 2000 chars
-const LARGE_CONTENT = 'x'.repeat(3000); // above 2000-char default threshold
+const HUGE_DOC = '# Title\n\n' + 'paragraph '.repeat(20_000);
+const HUGE_CODE = 'export const x = 1;\n'.repeat(20_000);
 
-describe('handleHook — payload parsing', () => {
-  it('extracts file_path from a realistic PreToolUse Read payload', () => {
-    const readFile = vi.fn(() => SMALL_CONTENT);
-    handleHook(READ_PAYLOAD, { readFile, loadConfig: () => DEFAULT_CONFIG });
-    expect(readFile).toHaveBeenCalledWith('/project/src/large-file.ts');
-  });
+function deps(overrides: Partial<HookDeps> = {}): HookDeps {
+  return {
+    stat: vi.fn(() => ({ size: HUGE_DOC.length })),
+    readWindow: vi.fn(() => HUGE_DOC),
+    loadConfig: vi.fn(() => DEFAULT_CONFIG),
+    summarize: vi.fn(async () => 'DOC MAP: purpose and sections'),
+    ...overrides,
+  };
+}
 
-  it('does not touch the filesystem for non-Read tools', () => {
-    const readFile = vi.fn(() => '');
-    const output = handleHook(
-      { ...READ_PAYLOAD, tool_name: 'Bash', tool_input: { command: 'ls' } },
-      { readFile, loadConfig: () => DEFAULT_CONFIG },
-    );
+describe('handleHook — never summarize code', () => {
+  it('allows a huge TypeScript file without stating or reading it', async () => {
+    const d = deps();
+    const output = await handleHook(readPayload('/project/src/index.ts'), d);
     expect(output.type).toBe('allow');
-    expect(readFile).not.toHaveBeenCalled();
-  });
-});
-
-describe('handleHook — allow decisions', () => {
-  it('allows when file content is below threshold', () => {
-    const output = handleHook(READ_PAYLOAD, {
-      readFile: () => SMALL_CONTENT,
-      loadConfig: () => DEFAULT_CONFIG,
-    });
-    expect(output.type).toBe('allow');
+    expect(d.stat).not.toHaveBeenCalled();
+    expect(d.readWindow).not.toHaveBeenCalled();
+    expect(d.summarize).not.toHaveBeenCalled();
   });
 
-  it('allows when file_path is missing from tool_input', () => {
-    const output = handleHook(
-      { ...READ_PAYLOAD, tool_input: {} },
-      { readFile: () => LARGE_CONTENT, loadConfig: () => DEFAULT_CONFIG },
-    );
-    expect(output.type).toBe('allow');
-  });
-
-  it('allows when the file cannot be read', () => {
-    const output = handleHook(READ_PAYLOAD, {
-      readFile: () => { throw new Error('ENOENT: no such file'); },
-      loadConfig: () => DEFAULT_CONFIG,
-    });
-    expect(output.type).toBe('allow');
-  });
-
-  it('allows all non-Read tool names without inspecting the file', () => {
-    for (const toolName of ['Bash', 'Write', 'Edit', 'Glob', 'Grep']) {
-      const readFile = vi.fn(() => LARGE_CONTENT);
-      const output = handleHook(
-        { ...READ_PAYLOAD, tool_name: toolName },
-        { readFile, loadConfig: () => DEFAULT_CONFIG },
-      );
+  it('allows huge python, json, and lockfiles without reading', async () => {
+    for (const filePath of [
+      '/project/app.py',
+      '/project/package.json',
+      '/project/package-lock.json',
+      '/project/pnpm-lock.yaml',
+    ]) {
+      const d = deps({ stat: vi.fn(() => ({ size: HUGE_CODE.length })), readWindow: vi.fn(() => HUGE_CODE) });
+      const output = await handleHook(readPayload(filePath), d);
       expect(output.type).toBe('allow');
-      expect(readFile).not.toHaveBeenCalled();
+      expect(d.readWindow).not.toHaveBeenCalled();
+      expect(d.summarize).not.toHaveBeenCalled();
     }
   });
 });
 
-describe('handleHook — deny decisions', () => {
-  it('denies when file is above threshold', () => {
-    const output = handleHook(READ_PAYLOAD, {
-      readFile: () => LARGE_CONTENT,
-      loadConfig: () => DEFAULT_CONFIG,
-    });
+describe('handleHook — documentation', () => {
+  it('denies a huge markdown file and injects the map, without mentioning garrepa summarize', async () => {
+    const output = await handleHook(readPayload('/project/docs/SPEC.md'), deps());
     expect(output.type).toBe('deny');
-  });
-
-  it('deny response mentions garrepa summarize in the reason', () => {
-    const output = handleHook(READ_PAYLOAD, {
-      readFile: () => LARGE_CONTENT,
-      loadConfig: () => DEFAULT_CONFIG,
-    });
-    if (output.type !== 'deny') throw new Error('expected deny');
-    expect(output.response.hookSpecificOutput.permissionDecisionReason).toContain(
-      'garrepa summarize',
-    );
-  });
-
-  it('deny additionalContext references the original file path', () => {
-    const output = handleHook(READ_PAYLOAD, {
-      readFile: () => LARGE_CONTENT,
-      loadConfig: () => DEFAULT_CONFIG,
-    });
-    if (output.type !== 'deny') throw new Error('expected deny');
-    expect(output.response.hookSpecificOutput.additionalContext).toContain(
-      '/project/src/large-file.ts',
-    );
-  });
-
-  it('deny response has hookEventName: "PreToolUse"', () => {
-    const output = handleHook(READ_PAYLOAD, {
-      readFile: () => LARGE_CONTENT,
-      loadConfig: () => DEFAULT_CONFIG,
-    });
-    if (output.type !== 'deny') throw new Error('expected deny');
-    expect(output.response.hookSpecificOutput.hookEventName).toBe('PreToolUse');
-  });
-
-  it('deny response has permissionDecision: "deny"', () => {
-    const output = handleHook(READ_PAYLOAD, {
-      readFile: () => LARGE_CONTENT,
-      loadConfig: () => DEFAULT_CONFIG,
-    });
     if (output.type !== 'deny') throw new Error('expected deny');
     expect(output.response.hookSpecificOutput.permissionDecision).toBe('deny');
+    expect(output.response.hookSpecificOutput.additionalContext).toContain('DOC MAP');
+    expect(output.response.hookSpecificOutput.permissionDecisionReason).not.toMatch(/garrepa summarize/);
+    expect(output.response.hookSpecificOutput.additionalContext).not.toMatch(/garrepa summarize/);
   });
 
-  it('deny reason includes actual char count and configured threshold', () => {
-    const customConfig: GarrepaConfig = {
-      threshold: { minChars: 500 },
-      provider: { type: 'anthropic' },
-    };
-    const content = 'y'.repeat(800);
-    const output = handleHook(READ_PAYLOAD, {
-      readFile: () => content,
-      loadConfig: () => customConfig,
+  it('allows markdown below the default threshold', async () => {
+    const d = deps({
+      stat: vi.fn(() => ({ size: 100 })),
+      readWindow: vi.fn(() => '# short'),
     });
-    if (output.type !== 'deny') throw new Error('expected deny');
-    const reason = output.response.hookSpecificOutput.permissionDecisionReason ?? '';
-    expect(reason).toContain('800'); // char count
-    expect(reason).toContain('500'); // threshold
+    const output = await handleHook(readPayload('/project/README.md'), d);
+    expect(output.type).toBe('allow');
+    expect(d.readWindow).not.toHaveBeenCalled();
+    expect(d.summarize).not.toHaveBeenCalled();
+  });
+
+  it('allows a limited Read window under threshold without reading the file', async () => {
+    const d = deps();
+    const output = await handleHook(readPayload('/project/docs/SPEC.md', { offset: 1, limit: 40 }), d);
+    expect(output.type).toBe('allow');
+    expect(d.stat).not.toHaveBeenCalled();
+    expect(d.readWindow).not.toHaveBeenCalled();
+    expect(d.summarize).not.toHaveBeenCalled();
+  });
+
+  it('allows when summarize fails', async () => {
+    const d = deps({ summarize: vi.fn(async () => { throw new Error('provider down'); }) });
+    const output = await handleHook(readPayload('/project/docs/SPEC.md'), d);
+    expect(output.type).toBe('allow');
+  });
+
+  it('allows when the summary is not shorter than the source window', async () => {
+    const d = deps({ summarize: vi.fn(async () => HUGE_DOC + HUGE_DOC) });
+    const output = await handleHook(readPayload('/project/docs/SPEC.md'), d);
+    expect(output.type).toBe('allow');
+  });
+
+  it('allows secret paths even when they look like docs', async () => {
+    const d = deps();
+    const output = await handleHook(readPayload('/project/.env'), d);
+    expect(output.type).toBe('allow');
+    expect(d.summarize).not.toHaveBeenCalled();
+  });
+
+  it('allows when stat throws', async () => {
+    const d = deps({ stat: vi.fn(() => { throw new Error('ENOENT'); }) });
+    const output = await handleHook(readPayload('/project/docs/SPEC.md'), d);
+    expect(output.type).toBe('allow');
+  });
+
+  it('allows non-Read tools', async () => {
+    const d = deps();
+    const output = await handleHook(
+      { ...readPayload('/project/docs/SPEC.md'), tool_name: 'Edit' },
+      d,
+    );
+    expect(output.type).toBe('allow');
+    expect(d.stat).not.toHaveBeenCalled();
   });
 });

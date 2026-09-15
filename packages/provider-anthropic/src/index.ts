@@ -1,4 +1,4 @@
-import type { Provider } from '@garrepa/core';
+import type { Provider, ProviderResult } from '@garrepa/core';
 
 export const DEFAULT_MODEL = 'claude-haiku-4-5';
 export const DEFAULT_MAX_TOKENS = 1024;
@@ -37,13 +37,14 @@ interface MessagesRequestBody {
 
 interface MessagesResponseBody {
   content: Array<{ type: string; text?: string }>;
+  usage?: { input_tokens?: number; output_tokens?: number };
 }
 
 // Isolated HTTP call — mock globalThis.fetch in tests to replace this behaviour.
 async function callMessagesApi(
   apiKey: string,
   body: MessagesRequestBody,
-): Promise<string> {
+): Promise<ProviderResult> {
   let response: Response;
 
   try {
@@ -78,7 +79,13 @@ async function callMessagesApi(
   if (!textBlock?.text) {
     throw new AnthropicProviderError('Anthropic API returned no text content');
   }
-  return textBlock.text;
+
+  const usage =
+    data.usage?.input_tokens != null && data.usage?.output_tokens != null
+      ? { inputTokens: data.usage.input_tokens, outputTokens: data.usage.output_tokens }
+      : undefined;
+
+  return { text: textBlock.text, usage };
 }
 
 export class AnthropicProvider implements Provider {
@@ -98,7 +105,7 @@ export class AnthropicProvider implements Provider {
     this.maxTokens = config.maxTokens ?? DEFAULT_MAX_TOKENS;
   }
 
-  async summarize(content: string, instruction: string): Promise<string> {
+  async summarize(content: string, instruction: string): Promise<ProviderResult> {
     return callMessagesApi(this.apiKey, {
       model: this.model,
       max_tokens: this.maxTokens,

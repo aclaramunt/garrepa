@@ -1,24 +1,76 @@
-import { decide } from '@garrepa/core';
+import {
+  decideFromCharCount,
+  isSecretPath,
+  DEFAULT_MAX_PROVIDER_CHARS,
+} from '@garrepa/core';
 import type { PreToolUsePayload, HookDecisionResponse } from './types';
 import type { GarrepaConfig } from './config';
+import { isDocumentationPath } from './classify';
+import { DOC_MAP_INSTRUCTION } from './instructions';
+import { AVG_CHARS_PER_LINE, SUMMARY_MAX_CHARS } from './constants';
+import type { ReadWindowOpts } from './read-window';
 
-/** Injected I/O so the hook logic is testable without touching real files. */
+export interface FileStat {
+  size: number;
+}
+
 export interface HookDeps {
-  readFile(filePath: string): string;
+  stat(filePath: string): FileStat;
+  readWindow(filePath: string, opts: ReadWindowOpts): string;
   loadConfig(cwd: string): GarrepaConfig;
+  summarize(content: string, instruction: string, config: GarrepaConfig): Promise<string>;
 }
 
 export type HookOutput =
   | { type: 'allow' }
   | { type: 'deny'; response: HookDecisionResponse };
 
+function parseLineBound(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return undefined;
+}
+
+function estimateWindowChars(
+  statSize: number,
+  offset: number | undefined,
+  limit: number | undefined,
+): number {
+  if (limit != null) return limit * AVG_CHARS_PER_LINE;
+  if (offset != null) return Math.max(0, statSize);
+  return statSize;
+}
+
+function denyResponse(charCount: number, threshold: number, map: string): HookDecisionResponse {
+  const clipped = map.length > SUMMARY_MAX_CHARS ? map.slice(0, SUMMARY_MAX_CHARS) : map;
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      permissionDecisionReason:
+        `Documentation is large (${charCount} chars, threshold: ${threshold} chars). ` +
+        `Garrepa compressed it into a map. Use Read with offset/limit if you need the exact text of a section.`,
+      additionalContext: clipped,
+    },
+  };
+}
+
 /**
- * Pure decision function: given a PreToolUse payload and injected deps,
- * returns whether to allow or deny the tool call.
- *
- * Only Read tool calls are ever inspected; everything else passes through.
+ * PreToolUse decision: never intercept source. Compress only very large docs.
+ * Fail-open on any error or when compression would not save tokens.
  */
-export function handleHook(payload: PreToolUsePayload, deps: HookDeps): HookOutput {
+export async function handleHook(payload: PreToolUsePayload, deps: HookDeps): Promise<HookOutput> {
+  try {
+    return await decideHook(payload, deps);
+  } catch {
+    return { type: 'allow' };
+  }
+}
+
+async function decideHook(payload: PreToolUsePayload, deps: HookDeps): Promise<HookOutput> {
   if (payload.tool_name !== 'Read') {
     return { type: 'allow' };
   }
@@ -28,34 +80,62 @@ export function handleHook(payload: PreToolUsePayload, deps: HookDeps): HookOutp
     return { type: 'allow' };
   }
 
-  let content: string;
-  try {
-    content = deps.readFile(filePath);
-  } catch {
-    // Unreadable file — let Claude Code surface its own error.
+  if (isSecretPath(filePath)) {
     return { type: 'allow' };
   }
 
-  const config = deps.loadConfig(payload.cwd);
-  const decision = decide(content, config.threshold);
+  if (!isDocumentationPath(filePath)) {
+    return { type: 'allow' };
+  }
 
-  if (!decision.delegate) {
+  const offset = parseLineBound(payload.tool_input['offset']);
+  const limit = parseLineBound(payload.tool_input['limit']);
+  const config = deps.loadConfig(payload.cwd);
+
+  if (limit != null && limit * AVG_CHARS_PER_LINE < config.threshold.minChars) {
+    return { type: 'allow' };
+  }
+
+  let stat: FileStat;
+  try {
+    stat = deps.stat(filePath);
+  } catch {
+    return { type: 'allow' };
+  }
+  const estimated = estimateWindowChars(stat.size, offset, limit);
+  if (!decideFromCharCount(estimated, config.threshold).delegate) {
+    return { type: 'allow' };
+  }
+
+  let content: string;
+  try {
+    content = deps.readWindow(filePath, {
+      offset,
+      limit,
+      maxChars: DEFAULT_MAX_PROVIDER_CHARS,
+    });
+  } catch {
+    return { type: 'allow' };
+  }
+
+  if (!decideFromCharCount(content.length, config.threshold).delegate) {
+    return { type: 'allow' };
+  }
+
+  let summary: string;
+  try {
+    summary = await deps.summarize(content, DOC_MAP_INSTRUCTION, config);
+  } catch {
+    return { type: 'allow' };
+  }
+
+  const map = summary.trim();
+  if (map.length === 0 || map.length >= content.length) {
     return { type: 'allow' };
   }
 
   return {
     type: 'deny',
-    response: {
-      hookSpecificOutput: {
-        hookEventName: 'PreToolUse',
-        permissionDecision: 'deny',
-        permissionDecisionReason:
-          `File is large (${content.length} chars, threshold: ${config.threshold.minChars} chars). ` +
-          `Use \`garrepa summarize\` to get a compressed summary instead.`,
-        additionalContext:
-          `Run \`garrepa summarize ${filePath}\` via Bash to get a concise summary of this file. ` +
-          `Use the summary output as the file content instead of reading the file directly.`,
-      },
-    },
+    response: denyResponse(content.length, config.threshold.minChars, map),
   };
 }

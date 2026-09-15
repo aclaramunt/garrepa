@@ -125,7 +125,7 @@ async function runInteractiveWizard(options: InitOptions, deps: InitDeps): Promi
       {
         value: 'codex-cli',
         label: 'Codex CLI',
-        hint: 'experimental — best-effort file-read detection',
+        hint: 'community scaffold — not first-party supported',
       },
     ],
     initialValue: options.harness ?? 'claude-code',
@@ -217,8 +217,8 @@ async function runInteractiveWizard(options: InitOptions, deps: InitDeps): Promi
 
   const hookLocation =
     harness === 'codex-cli'
-      ? '.codex/hooks.json (PreToolUse → exec_command)'
-      : '.claude/settings.json (PreToolUse → Read)';
+      ? '.codex/hooks.json (PreToolUse → Bash)'
+      : '.claude/settings.json (PreToolUse → Read; PostToolUse → mcp__.* and Bash git)';
 
   const skillLocation =
     harness === 'codex-cli'
@@ -232,7 +232,7 @@ async function runInteractiveWizard(options: InitOptions, deps: InitDeps): Promi
 
   const codexNote =
     harness === 'codex-cli'
-      ? '\n\nNote: Codex CLI adapter uses best-effort pattern matching — see README.'
+      ? '\n\nNote: Codex CLI is a community scaffold, not first-party supported. See packages/adapter-codex-cli/README.md.'
       : '';
 
   clack.outro(

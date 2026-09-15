@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseReadCommand, DEFAULT_READ_COMMANDS } from './parse-read-command';
 
-// Source: openai/codex codex-rs/hooks/src/schema.rs — exec_command tool_input.cmd
+// Parses the shell command string from Codex Bash tool_input.command (or legacy cmd).
 
 describe('parseReadCommand — shell metacharacter rejection', () => {
   it('rejects commands with a pipe', () => {

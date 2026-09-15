@@ -2,8 +2,12 @@
  * All types specific to the Codex CLI hook protocol live here.
  * Nothing in @garrepa/core or any provider package should import from this file.
  *
- * Source: openai/codex codex-rs/hooks/src/schema.rs — PreToolUseCommandInput
- * (generated fixture: codex-rs/hooks/schema/generated/pre-tool-use.command.input.schema.json)
+ * Current protocol: https://developers.openai.com/codex/hooks
+ *   tool_name is the canonical hook name (`Bash` for shell / unified exec).
+ *   Bash tool_input uses `{ command: string }`.
+ *
+ * Legacy (older unified exec): tool_name `exec_command`, tool_input `{ cmd: string }`.
+ * The adapter accepts both so older Codex builds keep working.
  */
 
 /** Exact payload Codex CLI sends on stdin for every PreToolUse event. */

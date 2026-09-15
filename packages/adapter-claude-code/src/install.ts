@@ -2,14 +2,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { DEFAULT_GARREPA_CONFIG } from './config';
 import { installSkill } from './skill';
-
-/** Absolute path to the hook bin script in this package. */
-const HOOK_BIN = path.resolve(__dirname, '..', 'bin', 'pre-tool-use-hook.js');
+import {
+  BASH_GIT_HOOK_IF,
+  BASH_POST_TOOL_MATCHER,
+  CLAUDE_HOOK_LAUNCHER_ARG,
+  HOOK_TIMEOUT_SECONDS,
+  LAUNCHER_RELATIVE_PATH,
+  MCP_POST_TOOL_MATCHER,
+} from './constants';
 
 interface HookEntry {
   type: string;
   command: string;
   args?: string[];
+  timeout?: number;
+  if?: string;
 }
 
 interface HookGroup {
@@ -20,17 +27,63 @@ interface HookGroup {
 interface ClaudeSettings {
   hooks?: {
     PreToolUse?: HookGroup[];
+    PostToolUse?: HookGroup[];
     [key: string]: unknown;
   };
   [key: string]: unknown;
 }
 
+const LAUNCHER_TEMPLATE_PATH = path.resolve(__dirname, '..', 'hooks', 'garrepa-hook.js');
+
+function isGarrepaHook(hook: HookEntry): boolean {
+  const blob = `${hook.command} ${(hook.args ?? []).join(' ')}`;
+  return blob.includes('garrepa-hook.js') || blob.includes('pre-tool-use-hook.js');
+}
+
+function stripGarrepaHooks(groups: HookGroup[], matcher: string): HookGroup[] {
+  const next: HookGroup[] = [];
+  for (const group of groups) {
+    if (group.matcher !== matcher) {
+      next.push(group);
+      continue;
+    }
+    const hooks = group.hooks.filter((h) => !isGarrepaHook(h));
+    if (hooks.length > 0) {
+      next.push({ ...group, hooks });
+    }
+  }
+  return next;
+}
+
+function writeLauncher(projectRoot: string): void {
+  const dest = path.join(projectRoot, LAUNCHER_RELATIVE_PATH);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  const source = fs.existsSync(LAUNCHER_TEMPLATE_PATH)
+    ? fs.readFileSync(LAUNCHER_TEMPLATE_PATH, 'utf8')
+    : `#!/usr/bin/env node
+'use strict';
+const path = require('path');
+const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+function failOpen(err) {
+  try { process.stderr.write(String(err) + '\\n'); } catch { /* ignore */ }
+  process.exit(0);
+}
+try {
+  const pkgJson = require.resolve('@garrepa/adapter-claude-code/package.json', { paths: [root] });
+  require(path.join(path.dirname(pkgJson), 'dist', 'hook-entry.js')).main().catch(failOpen);
+} catch (err) {
+  failOpen(err);
+}
+`;
+  fs.writeFileSync(dest, source, 'utf8');
+}
+
 /**
  * Registers the garrepa PreToolUse hook in `<projectRoot>/.claude/settings.json`,
- * installs the `garrepa-write` project skill under `.claude/skills/`, and
- * creates a default `garrepa.config.json` if one does not exist.
+ * installs the `garrepa-write` project skill, and creates a default
+ * `garrepa.config.json` if one does not exist.
  *
- * Safe to call multiple times — will not add a duplicate hook entry.
+ * Safe to call multiple times. Invalid existing settings JSON aborts without write.
  */
 export function installHook(projectRoot: string): void {
   const claudeDir = path.join(projectRoot, '.claude');
@@ -43,31 +96,56 @@ export function installHook(projectRoot: string): void {
 
   let settings: ClaudeSettings = {};
   if (fs.existsSync(settingsPath)) {
+    const raw = fs.readFileSync(settingsPath, 'utf8');
     try {
-      settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as ClaudeSettings;
+      settings = JSON.parse(raw) as ClaudeSettings;
     } catch {
-      settings = {};
+      throw new Error(
+        `garrepa: ${settingsPath} is not valid JSON; refusing to overwrite. Fix the file and re-run garrepa init.`,
+      );
     }
   }
 
   if (!settings.hooks) settings.hooks = {};
   if (!settings.hooks.PreToolUse) settings.hooks.PreToolUse = [];
+  if (!settings.hooks.PostToolUse) settings.hooks.PostToolUse = [];
 
-  const alreadyInstalled = settings.hooks.PreToolUse.some(
-    (group) =>
-      group.matcher === 'Read' &&
-      group.hooks.some(
-        (h) => h.command === 'node' && Array.isArray(h.args) && h.args.includes(HOOK_BIN),
-      ),
+  settings.hooks.PreToolUse = stripGarrepaHooks(settings.hooks.PreToolUse, 'Read');
+  settings.hooks.PreToolUse.push({
+    matcher: 'Read',
+    hooks: [
+      {
+        type: 'command',
+        command: 'node',
+        args: [CLAUDE_HOOK_LAUNCHER_ARG],
+        timeout: HOOK_TIMEOUT_SECONDS,
+      },
+    ],
+  });
+  const launcherHook: HookEntry = {
+    type: 'command',
+    command: 'node',
+    args: [CLAUDE_HOOK_LAUNCHER_ARG],
+    timeout: HOOK_TIMEOUT_SECONDS,
+  };
+  settings.hooks.PostToolUse = stripGarrepaHooks(
+    settings.hooks.PostToolUse,
+    MCP_POST_TOOL_MATCHER,
   );
+  settings.hooks.PostToolUse = stripGarrepaHooks(
+    settings.hooks.PostToolUse,
+    BASH_POST_TOOL_MATCHER,
+  );
+  settings.hooks.PostToolUse.push({
+    matcher: MCP_POST_TOOL_MATCHER,
+    hooks: [launcherHook],
+  });
+  settings.hooks.PostToolUse.push({
+    matcher: BASH_POST_TOOL_MATCHER,
+    hooks: [{ ...launcherHook, if: BASH_GIT_HOOK_IF }],
+  });
 
-  if (!alreadyInstalled) {
-    settings.hooks.PreToolUse.push({
-      matcher: 'Read',
-      hooks: [{ type: 'command', command: 'node', args: [HOOK_BIN] }],
-    });
-  }
-
+  writeLauncher(projectRoot);
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
 
   installSkill(projectRoot);

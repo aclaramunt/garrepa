@@ -7,8 +7,12 @@
 export const COMMIT_MESSAGE_INSTRUCTION =
   'Write a concise, conventional-commits-style commit message summarizing this diff. Output only the commit message, nothing else.';
 
+export const PR_TITLE_INSTRUCTION =
+  'Write a concise pull request title (under 72 characters) summarizing this diff. Use an imperative verb. Output only the title, nothing else.';
+
 export const WRITE_PRESETS: ReadonlyMap<string, string> = new Map([
   ['commit-message', COMMIT_MESSAGE_INSTRUCTION],
+  ['pr-title', PR_TITLE_INSTRUCTION],
 ]);
 
 export function getPresetInstruction(name: string): string | undefined {
@@ -18,4 +22,3 @@ export function getPresetInstruction(name: string): string | undefined {
 export function listPresetNames(): string[] {
   return [...WRITE_PRESETS.keys()];
 }
-// garrepa write smoke

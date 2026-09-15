@@ -1,4 +1,5 @@
 import { decide } from './delegation';
+import { capForProvider } from './cap';
 import type { Provider, ThresholdConfig, RouterResult } from './types';
 
 export async function route(
@@ -13,6 +14,6 @@ export async function route(
     return { output: content, delegated: false };
   }
 
-  const output = await provider.summarize(content, instruction);
-  return { output, delegated: true };
+  const result = await provider.summarize(capForProvider(content), instruction);
+  return { output: result.text, delegated: true, usage: result.usage };
 }

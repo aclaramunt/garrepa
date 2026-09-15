@@ -1,9 +1,9 @@
 /**
- * Best-effort pattern matching for file-read commands in Codex CLI's exec_command tool.
+ * Best-effort pattern matching for file-read commands in Codex CLI's shell tool.
  *
  * Codex CLI has no dedicated file-read tool — the model reads files via the shell
- * (exec_command). This module recognises simple, unambiguous read invocations and
- * extracts the target path so garrepa can inspect the file size before the tool runs.
+ * (`Bash` / unified exec). This module recognises simple, unambiguous read invocations
+ * and extracts the target path so garrepa can inspect the file size before the tool runs.
  *
  * Safety contract:
  *   - False negatives (missed reads) are acceptable.
@@ -12,8 +12,8 @@
  * Any command containing shell metacharacters (pipes, redirects, chaining, subshells)
  * is passed through unchanged. Only single-file, single-command invocations match.
  *
- * Source reference: openai/codex codex-rs/hooks/src/schema.rs — PreToolUseCommandInput
- * has `tool_name: "exec_command"` and `tool_input: { cmd: "..." }`.
+ * Source reference: https://developers.openai.com/codex/hooks
+ *   shell / unified exec → tool_name `Bash`, tool_input `{ command: "..." }`.
  */
 
 export interface ReadCommandMatch {
@@ -45,7 +45,7 @@ const SHELL_METACHARACTERS = /[|><;&`$()]/;
  *   - No shell metacharacters anywhere.
  *   - No quoted paths (false negative — acceptable).
  *
- * @param cmd - Raw `cmd` value from a Codex CLI exec_command tool_input.
+ * @param cmd - Raw shell command string (`tool_input.command`, or legacy `cmd`).
  * @param readCommands - Allowlist of command names to treat as reads.
  */
 export function parseReadCommand(

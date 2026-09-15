@@ -2,6 +2,10 @@
 'use strict';
 
 require('../dist/hook-entry').main().catch((/** @type {unknown} */ err) => {
-  process.stderr.write(String(err) + '\n');
-  process.exit(1);
+  try {
+    process.stderr.write(String(err) + '\n');
+  } catch {
+    // ignore
+  }
+  process.exit(0);
 });

@@ -60,4 +60,17 @@ describe('loadConfig — valid config file', () => {
     expect(config.provider.model).toBe('claude-haiku-4-5');
     expect(config.provider.maxTokens).toBe(512);
   });
+
+  it('loads only valid exact MCP tool exclusions', () => {
+    const raw = JSON.stringify({
+      threshold: { minChars: 100 },
+      provider: { type: 'anthropic' },
+      mcp: {
+        excludeTools: ['mcp__vault__read_secret', 'Read', 42],
+      },
+    });
+    const config = loadConfig('/project', () => raw);
+
+    expect(config.mcp?.excludeTools).toEqual(['mcp__vault__read_secret']);
+  });
 });

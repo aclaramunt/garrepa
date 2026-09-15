@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { decide } from './delegation';
+import { decide, decideFromCharCount } from './delegation';
 
 const THRESHOLD = 2000;
 const config = { minChars: THRESHOLD };
@@ -32,5 +32,18 @@ describe('decide()', () => {
 
     const large = decide('hello', { minChars: 100 });
     expect(large.delegate).toBe(false);
+  });
+});
+
+describe('decideFromCharCount()', () => {
+  it('matches decide() for the same length', () => {
+    const fromCount = decideFromCharCount(500, config);
+    const fromContent = decide('x'.repeat(500), config);
+    expect(fromCount).toEqual(fromContent);
+  });
+
+  it('does not require loading the file body', () => {
+    expect(decideFromCharCount(32_000, { minChars: 32_000 }).delegate).toBe(true);
+    expect(decideFromCharCount(31_999, { minChars: 32_000 }).delegate).toBe(false);
   });
 });

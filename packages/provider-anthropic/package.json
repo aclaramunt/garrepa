@@ -1,9 +1,14 @@
 {
   "name": "@garrepa/provider-anthropic",
-  "version": "0.0.1",
-  "private": true,
+  "version": "0.0.1-beta.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run"

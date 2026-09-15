@@ -6,6 +6,9 @@ import { installSkill } from './skill';
 /** Absolute path to the hook bin script in this package. */
 const HOOK_BIN = path.resolve(__dirname, '..', 'bin', 'pre-tool-use-hook.js');
 
+/** Matcher Codex applies to `tool_name`. Shell / unified exec is exposed as `Bash`. */
+export const BASH_HOOK_MATCHER = '^Bash$';
+
 interface HookEntry {
   type: 'command';
   command: string;
@@ -61,15 +64,16 @@ export function installHook(projectRoot: string): void {
 
   // Codex CLI hook command is a single shell string (no separate args field).
   const hookCommand = `node ${HOOK_BIN}`;
-  const alreadyInstalled = hooksFile.hooks.PreToolUse.some(
-    (group) =>
-      group.matcher === '^exec_command$' &&
-      group.hooks.some((h) => h.command === hookCommand),
+  const existingGroup = hooksFile.hooks.PreToolUse.find((group) =>
+    group.hooks.some((h) => h.command === hookCommand),
   );
 
-  if (!alreadyInstalled) {
+  if (existingGroup) {
+    // Re-init upgrades a legacy `exec_command` matcher to the current Bash matcher.
+    existingGroup.matcher = BASH_HOOK_MATCHER;
+  } else {
     hooksFile.hooks.PreToolUse.push({
-      matcher: '^exec_command$',
+      matcher: BASH_HOOK_MATCHER,
       hooks: [{ type: 'command', command: hookCommand, timeout: 30 }],
     });
   }

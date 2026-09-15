@@ -1,4 +1,4 @@
-import type { Provider } from './types';
+import type { Provider, ProviderResult } from './types';
 
 /**
  * In-memory Provider stub for unit tests.
@@ -11,9 +11,9 @@ export class MockProvider implements Provider {
 
   constructor(private readonly response: string) {}
 
-  async summarize(content: string, instruction: string): Promise<string> {
+  async summarize(content: string, instruction: string): Promise<ProviderResult> {
     this.callCount++;
     this.lastCall = { content, instruction };
-    return this.response;
+    return { text: this.response };
   }
 }

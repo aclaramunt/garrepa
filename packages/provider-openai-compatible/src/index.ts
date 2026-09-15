@@ -1,4 +1,4 @@
-import type { Provider } from '@garrepa/core';
+import type { Provider, ProviderResult } from '@garrepa/core';
 
 export const DEFAULT_MAX_TOKENS = 1024;
 const CHAT_COMPLETIONS_PATH = '/chat/completions';
@@ -39,13 +39,14 @@ interface ChatCompletionsRequestBody {
 
 interface ChatCompletionsResponseBody {
   choices: Array<{ message: { content: string } }>;
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
 }
 
 async function callChatCompletionsApi(
   endpoint: string,
   apiKey: string,
   body: ChatCompletionsRequestBody,
-): Promise<string> {
+): Promise<ProviderResult> {
   let response: Response;
 
   try {
@@ -79,7 +80,13 @@ async function callChatCompletionsApi(
   if (!content) {
     throw new OpenAICompatibleProviderError('API returned no text content');
   }
-  return content;
+
+  const usage =
+    data.usage?.prompt_tokens != null && data.usage?.completion_tokens != null
+      ? { inputTokens: data.usage.prompt_tokens, outputTokens: data.usage.completion_tokens }
+      : undefined;
+
+  return { text: content, usage };
 }
 
 export class OpenAICompatibleProvider implements Provider {
@@ -114,7 +121,7 @@ export class OpenAICompatibleProvider implements Provider {
     this.maxTokens = config.maxTokens ?? DEFAULT_MAX_TOKENS;
   }
 
-  async summarize(content: string, instruction: string): Promise<string> {
+  async summarize(content: string, instruction: string): Promise<ProviderResult> {
     return callChatCompletionsApi(this.endpoint, this.apiKey, {
       model: this.model,
       max_tokens: this.maxTokens,

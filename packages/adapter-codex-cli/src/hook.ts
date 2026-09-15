@@ -13,23 +13,37 @@ export type HookOutput =
   | { type: 'allow' }
   | { type: 'deny'; response: HookDecisionResponse };
 
+/** Canonical Codex hook name for shell, plus the older unified-exec identifier. */
+const SHELL_TOOL_NAMES = new Set(['Bash', 'exec_command']);
+
+/**
+ * Codex currently sends `tool_input.command`; older payloads used `tool_input.cmd`.
+ */
+function extractShellCommand(toolInput: Record<string, unknown>): string | null {
+  const command = toolInput['command'];
+  if (typeof command === 'string') return command;
+  const cmd = toolInput['cmd'];
+  if (typeof cmd === 'string') return cmd;
+  return null;
+}
+
 /**
  * Pure decision function: given a PreToolUse payload and injected deps,
  * returns whether to allow or deny the tool call.
  *
- * Only exec_command calls that match a simple, unambiguous read pattern are
- * ever inspected; everything else passes through unchanged.
+ * Only shell tool calls (`Bash` / legacy `exec_command`) that match a simple,
+ * unambiguous read pattern are ever inspected; everything else passes through.
  *
  * See parse-read-command.ts for the matching rules and their rationale.
  */
 export function handleHook(payload: PreToolUsePayload, deps: HookDeps): HookOutput {
-  // Codex CLI file reads go through exec_command — there is no dedicated read tool.
-  if (payload.tool_name !== 'exec_command') {
+  // Codex CLI file reads go through the shell — there is no dedicated read tool.
+  if (!SHELL_TOOL_NAMES.has(payload.tool_name)) {
     return { type: 'allow' };
   }
 
-  const cmd = payload.tool_input['cmd'];
-  if (typeof cmd !== 'string') {
+  const cmd = extractShellCommand(payload.tool_input);
+  if (cmd === null) {
     return { type: 'allow' };
   }
 
@@ -66,7 +80,7 @@ export function handleHook(payload: PreToolUsePayload, deps: HookDeps): HookOutp
           `File is large (${content.length} chars, threshold: ${config.threshold.minChars} chars). ` +
           `Use \`garrepa summarize\` to get a compressed summary instead.`,
         additionalContext:
-          `Run \`garrepa summarize ${match.filePath}\` via exec_command to get a concise ` +
+          `Run \`garrepa summarize ${match.filePath}\` via Bash to get a concise ` +
           `summary of this file. Use the summary output as the file content instead of ` +
           `reading the file directly.`,
       },
