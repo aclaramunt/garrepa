@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@garrepa/cli':
+        specifier: 0.0.1-beta.0
+        version: 0.0.1-beta.0
     devDependencies:
       dotenv:
         specifier: ^17.4.2
@@ -326,6 +330,10 @@ packages:
   '@eslint/plugin-kit@0.4.1':
     resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+
+  '@garrepa/cli@0.0.1-beta.0':
+    resolution: {integrity: sha512-yJjX2NyDMcsEcAvBK3Dxx+9ck2GEgqIfAAFcwZt4wGJD7VJi6grApm0zpJocmDUhhtYHchMZzM86vuq+CQOCww==}
+    hasBin: true
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -1231,6 +1239,17 @@ snapshots:
     dependencies:
       '@eslint/core': 0.17.0
       levn: 0.4.1
+
+  '@garrepa/cli@0.0.1-beta.0':
+    dependencies:
+      '@clack/prompts': 0.9.1
+      '@garrepa/adapter-claude-code': link:packages/adapter-claude-code
+      '@garrepa/adapter-codex-cli': link:packages/adapter-codex-cli
+      '@garrepa/core': link:packages/core
+      '@garrepa/provider-anthropic': link:packages/provider-anthropic
+      '@garrepa/provider-openai-compatible': link:packages/provider-openai-compatible
+      commander: 12.1.0
+      dotenv: 17.4.2
 
   '@humanfs/core@0.19.2':
     dependencies:
