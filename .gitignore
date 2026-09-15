@@ -33,3 +33,6 @@ garrepa.config.json
 
 # CI workflows (managed separately)
 .github/workflows/
+
+# Devops
+devops/
